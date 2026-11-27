@@ -59,7 +59,7 @@
 </head>
 <body>
     
-    <button id="menu-button" type="button" aria-label="Open map filters" aria-expanded="false">☰</button><div id="sidebar-backdrop" hidden></div><aside id="site-sidebar" aria-label="Map search and filters"><header class="sidebar-header"><p class="eyebrow">Greek Archaeological Cadastre</p><h1>Archaeological heritage in Greece</h1><p class="sidebar-intro">Explore official archaeological sites, monuments, museums, and protected places.</p><button id="close-sidebar" class="sidebar-close" type="button" aria-label="Close map filters">×</button></header><div class="sidebar-content"><div class="total-card"><span class="total-label">Mapped places</span><span id="total-count">—</span></div><p id="map-load-status" role="status" aria-live="polite"></p><section aria-labelledby="search-heading"><h2 id="search-heading" class="section-heading">Find a place</h2><label class="search-box"><span class="search-icon" aria-hidden="true">⌕</span><input id="place-search" type="search" placeholder="Search name or region" autocomplete="off" /></label><p id="search-status" role="status" aria-live="polite">Type at least 2 characters to search.</p><div id="search-results"></div></section><section class="category-section" aria-labelledby="category-heading"><div class="section-heading"><h2 id="category-heading">Categories</h2><div class="category-actions"><button id="show-all" class="text-button" type="button">Show all</button><button id="hide-all" class="text-button" type="button">Hide all</button></div></div><div id="category-list"></div></section></div><footer class="sidebar-footer">Data: <a href="https://www.arxaiologikoktimatologio.gov.gr/" target="_blank" rel="noopener">Greek Ministry of Culture</a><br>Basemap: OpenStreetMap contributors</footer></aside>
+    <button id="menu-button" type="button" aria-label="Open map filters" aria-expanded="false">☰</button><div id="sidebar-backdrop" hidden></div><aside id="site-sidebar" aria-label="Map search and filters"><header class="sidebar-header"><p class="eyebrow">Greek Archaeological Cadastre</p><h1>Archaeological heritage in Greece</h1><p class="sidebar-intro">Explore official archaeological sites, monuments, museums, and protected places.</p><button id="close-sidebar" class="sidebar-close" type="button" aria-label="Close map filters">×</button></header><div class="sidebar-content"><div class="total-card"><span class="total-label">Mapped places</span><span id="total-count">—</span></div><p id="map-load-status" role="status" aria-live="polite"></p><section aria-labelledby="search-heading"><h2 id="search-heading" class="section-heading">Find a place</h2><label class="search-box"><span class="search-icon" aria-hidden="true">⌕</span><input id="place-search" type="search" placeholder="Search name or region" autocomplete="off" /></label><p id="search-status" role="status" aria-live="polite">Type at least 2 characters to search.</p><div id="search-results"></div></section><section class="category-section" aria-labelledby="category-heading"><div class="section-heading"><h2 id="category-heading">Categories</h2><div class="category-actions"><button id="show-all" class="text-button" type="button">Show all</button><button id="hide-all" class="text-button" type="button">Hide all</button></div></div><div id="category-list"></div></section></div><footer class="sidebar-footer">Data: <a href="https://www.arxaiologikoktimatologio.gov.gr/" target="_blank" rel="noopener">Greek Ministry of Culture</a><br>Imagery: Esri, Maxar, Earthstar Geographics</footer></aside>
     <script>window.ARCHAEOLOGY_MAP_CONFIG = {"mapName":"map_1824467057604d3fb0dcde3f5bd0529b","layers":[{"category":"Archaeological site boundaries (lines)","variable":"feature_group_a7e2c8b3ae94fcc41a34906443447f01","count":30,"dataFiles":{"shapes":"data/layer_0_shapes.geojson","points":null},"clusterVariable":null},{"category":"Archaeological sites","variable":"feature_group_49d6f9f561cb9e86812a041aec813c84","count":3141,"dataFiles":{"shapes":"data/layer_1_shapes.geojson","points":null},"clusterVariable":null},{"category":"Historic places","variable":"feature_group_59f118388b08ca1be4011007a5b8c87f","count":404,"dataFiles":{"shapes":"data/layer_2_shapes.geojson","points":null},"clusterVariable":null},{"category":"Monuments (points)","variable":"feature_group_22a651ca8f32502f9e5916b2885e3fdb","count":17324,"dataFiles":{"shapes":null,"points":"data/layer_3_points.geojson"},"clusterVariable":"marker_cluster_efcb7b4b2bca665602ac8ea4b2c02378"},{"category":"Museums (points)","variable":"feature_group_27c0b3a8cc7e956e7921b511f8c3adaa","count":256,"dataFiles":{"shapes":null,"points":"data/layer_4_points.geojson"},"clusterVariable":"marker_cluster_47b402423577c2147e7fd29dc0fb8e13"},{"category":"Protection zones","variable":"feature_group_251169a20c889c4df1f78e5d39d5620a","count":820,"dataFiles":{"shapes":"data/layer_5_shapes.geojson","points":null},"clusterVariable":null}]};</script>
     
             <div class="folium-map" id="map_1824467057604d3fb0dcde3f5bd0529b" ></div>
@@ -87,13 +87,13 @@
         
     
             var tile_layer_90d8922dc2527d7447bd53044dcb0af7 = L.tileLayer(
-                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                 {
   "minZoom": 0,
   "maxZoom": 19,
   "maxNativeZoom": 19,
   "noWrap": false,
-  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "attribution": "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics",
   "subdomains": "abc",
   "detectRetina": false,
   "tms": false,
@@ -180,7 +180,7 @@
     
             var layer_control_85e49205cb196d3e9f63588dbd270d35_layers = {
                 base_layers : {
-                    "openstreetmap" : tile_layer_90d8922dc2527d7447bd53044dcb0af7,
+                    "Satellite imagery" : tile_layer_90d8922dc2527d7447bd53044dcb0af7,
                 },
                 overlays :  {
                     "Archaeological site boundaries (lines)" : feature_group_a7e2c8b3ae94fcc41a34906443447f01,
