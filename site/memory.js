@@ -14,15 +14,39 @@ const MEMORY = {
   collection: "points",              // shared route: the Firestore collection name
   // Shared route only: paste your Firebase web config here. Leave apiKey as PASTE for the personal route.
   firebaseConfig: {
-    apiKey: "PASTE",
-    authDomain: "PASTE.firebaseapp.com",
-    projectId: "PASTE",
-    appId: "PASTE"
+    apiKey: "AIzaSyCFI5z7l_rzwxLg85fy_ib6bt9jnDfREdo",
+    authDomain: "first-try-c17c8.firebaseapp.com",
+    projectId: "first-try-c17c8",
+    appId: "1:613294883140:web:483b9eb7e6f33e2db09711"
   }
 };
 // ===== END OF THE PART TO CHANGE =====
 
 const MEMORY_SDK = "https://www.gstatic.com/firebasejs/12.18.0/";   // pinned version
+
+let sharedFirebasePromise;
+window.getArchaeologyFirebase = function getArchaeologyFirebase() {
+  if (!sharedFirebasePromise) {
+    sharedFirebasePromise = (async () => {
+      const appSdk = await import(MEMORY_SDK + "firebase-app.js");
+      const fs = await import(MEMORY_SDK + "firebase-firestore.js");
+      const au = await import(MEMORY_SDK + "firebase-auth.js");
+      const app = appSdk.getApps().length
+        ? appSdk.getApp()
+        : appSdk.initializeApp(MEMORY.firebaseConfig);
+      const db = fs.getFirestore(app);
+      const auth = au.getAuth(app);
+      if (!auth.currentUser) {
+        await au.signInAnonymously(auth);
+      }
+      return { app, fs, db, auth };
+    })().catch((error) => {
+      sharedFirebasePromise = null;
+      throw error;
+    });
+  }
+  return sharedFirebasePromise;
+};
 
 function addMemory(map) {
   const shared = !String(MEMORY.firebaseConfig.apiKey).startsWith("PASTE");
@@ -38,18 +62,32 @@ function addMemory(map) {
   const Panel = L.Control.extend({
     onAdd() {
       const box = L.DomUtil.create("div", "memory-panel");
+      box.classList.add("is-open");
       box.style.cssText = "background:#fff;padding:8px 10px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.35);font:14px Arial,sans-serif;max-width:230px";
       box.innerHTML =
+        '<div class="memory-panel-header"><span class="memory-panel-title">Community points</span>' +
+        '<button type="button" class="panel-toggle memory-panel-toggle" data-m="toggle" aria-label="Hide community points panel" aria-expanded="true">Hide</button></div>' +
+        '<div data-m="content">' +
         '<button type="button" data-m="add" style="width:100%;min-height:40px;font-weight:bold;cursor:pointer">Add a point</button>' +
         '<div data-m="status" role="status" style="margin:6px 0">Loading...</div>' +
         '<ul data-m="legend" style="list-style:none;margin:0 0 6px;padding:0"></ul>' +
-        '<button type="button" data-m="export" style="width:100%;cursor:pointer">Download points (GeoJSON)</button>';
+        '<button type="button" data-m="export" style="width:100%;cursor:pointer">Download points (GeoJSON)</button></div>';
       L.DomEvent.disableClickPropagation(box);
       return box;
     }
   });
   const panel = new Panel({ position: MEMORY.position || "topright" }).addTo(map).getContainer();
   const $ = (k) => panel.querySelector('[data-m="' + k + '"]');
+  $("toggle").addEventListener("click", () => {
+    const collapsed = panel.classList.toggle("is-collapsed");
+    $("content").hidden = collapsed;
+    $("toggle").textContent = collapsed ? "Show points" : "Hide";
+    $("toggle").setAttribute("aria-expanded", String(!collapsed));
+    $("toggle").setAttribute(
+      "aria-label",
+      `${collapsed ? "Show" : "Hide"} community points panel`,
+    );
+  });
   for (const c of Object.values(MEMORY.categories)) {
     const li = document.createElement("li");
     const sw = document.createElement("span");
@@ -101,13 +139,7 @@ function addMemory(map) {
   async function startShared() {
     status("Connecting...");
     try {
-      const app = await import(MEMORY_SDK + "firebase-app.js");
-      const fs = await import(MEMORY_SDK + "firebase-firestore.js");
-      const au = await import(MEMORY_SDK + "firebase-auth.js");
-      const fapp = app.initializeApp(MEMORY.firebaseConfig);
-      const db = fs.getFirestore(fapp);
-      const auth = au.getAuth(fapp);
-      await au.signInAnonymously(auth);            // a random, anonymous id for this browser
+      const { fs, db, auth } = await window.getArchaeologyFirebase();
       myUid = auth.currentUser.uid;
       fb = { fs, db };
       const q = fs.query(fs.collection(db, MEMORY.collection), fs.orderBy("ts", "desc"), fs.limit(500));

@@ -42,6 +42,46 @@
   const locationButton = nearbySection.querySelector("#use-current-location");
   const nearbyStatus = nearbySection.querySelector("#nearby-status");
   const nearbyResults = nearbySection.querySelector("#nearby-results");
+  const trendingSection = document.createElement("section");
+  trendingSection.className = "trending-panel";
+  trendingSection.setAttribute("aria-labelledby", "trending-heading");
+  const trendingHeading = document.createElement("h2");
+  trendingHeading.id = "trending-heading";
+  trendingHeading.className = "trending-heading";
+  trendingHeading.textContent = "Trending this week";
+  const trendingToggle = document.createElement("button");
+  trendingToggle.className = "panel-toggle trending-toggle";
+  trendingToggle.type = "button";
+  trendingToggle.textContent = "Hide";
+  trendingToggle.setAttribute("aria-label", "Hide Trending this week panel");
+  trendingToggle.setAttribute("aria-expanded", "true");
+  const trendingStatus = document.createElement("p");
+  trendingStatus.className = "trending-status";
+  trendingStatus.setAttribute("role", "status");
+  trendingStatus.setAttribute("aria-live", "polite");
+  trendingStatus.textContent = "Connecting to shared activity...";
+  const trendingCards = document.createElement("div");
+  trendingCards.className = "trending-cards";
+  const trendingHeader = document.createElement("div");
+  trendingHeader.className = "trending-header";
+  trendingHeader.append(trendingHeading, trendingToggle);
+  trendingSection.append(trendingHeader, trendingStatus, trendingCards);
+  trendingToggle.addEventListener("click", () => {
+    const collapsed = trendingSection.classList.toggle("is-collapsed");
+    trendingToggle.textContent = collapsed ? "Show trending" : "Hide";
+    trendingToggle.setAttribute("aria-expanded", String(!collapsed));
+    trendingToggle.setAttribute(
+      "aria-label",
+      `${collapsed ? "Show" : "Hide"} Trending this week panel`,
+    );
+  });
+  const trendingControl = L.control({ position: "topright" });
+  trendingControl.onAdd = () => {
+    L.DomEvent.disableClickPropagation(trendingSection);
+    L.DomEvent.disableScrollPropagation(trendingSection);
+    return trendingSection;
+  };
+  trendingControl.addTo(map);
 
   const layers = config.layers.map((item) => {
     const layer = window[item.variable];
@@ -90,6 +130,23 @@
   let indexBuilt = false;
   let searchTimer;
   let userLocationMarker;
+  let trendingFirebase;
+  let trendingReady;
+  const recordedInteractions = new Set();
+  const trendingPhotos = new Map();
+  const photoStopWords = new Set([
+    "the", "and", "for", "from", "with", "site", "sites", "place", "places",
+    "archaeological", "historic", "monument", "monuments", "museum", "museums",
+    "island", "city", "church", "section", "street", "facility", "junction",
+    "greece", "of", "in", "at",
+  ]);
+  const trendableCategories = new Set([
+    "Archaeological sites",
+    "Historic places",
+    "Monuments (points)",
+    "Museums (points)",
+  ]);
+  const trendingCollection = "trending";
 
   totalCount.textContent = countFormatter.format(
     layers.reduce((sum, item) => sum + item.count, 0),
@@ -160,10 +217,12 @@
     searchableFeatures.push({
       category,
       layer,
+      feature: layer.feature,
       markerCluster,
       name,
       geometry,
       region: properties.region_unit_en || "",
+      placeId: createPlaceId(layer.feature, layer, category),
       searchText: `${name} ${properties.name || ""} ${properties.region_unit_en || ""} ${category}`.toLocaleLowerCase(),
     });
   }
@@ -202,6 +261,271 @@
     link.textContent = "Greek Archaeological Cadastre";
     content.append(link);
     return content;
+  }
+
+  function createPlaceId(feature, layer, category) {
+    const properties = feature?.properties ?? {};
+    const center = typeof layer.getBounds === "function"
+      ? layer.getBounds().getCenter()
+      : layer.getLatLng();
+    const name = properties.name_en || properties.name || "Unnamed place";
+    return encodeURIComponent(JSON.stringify([
+      category,
+      name,
+      properties.region_unit_en || "",
+      center.lat.toFixed(5),
+      center.lng.toFixed(5),
+    ]));
+  }
+
+  function renderTrending(snapshot) {
+    const totals = new Map();
+    snapshot.docs.forEach((document) => {
+      const activity = document.data();
+      if (!activity.placeId || !activity.name) {
+        return;
+      }
+      const current = totals.get(activity.placeId) ?? {
+        placeId: activity.placeId,
+        name: activity.name,
+        category: activity.category,
+        region: activity.region,
+        count: 0,
+      };
+      current.count += 1;
+      totals.set(activity.placeId, current);
+    });
+
+    const ranked = [...totals.values()]
+      .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
+      .slice(0, 5);
+    trendingCards.replaceChildren();
+    if (ranked.length === 0) {
+      trendingStatus.textContent = "No place activity yet this week.";
+      return;
+    }
+
+    trendingStatus.textContent =
+      "Popular from map detail views this week · one view per person per place daily.";
+    ranked.forEach((place, index) => {
+      const card = document.createElement("article");
+      card.className = "trending-card";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "trending-card-button";
+      button.setAttribute(
+        "aria-label",
+        `View trending place: ${place.name}, ${place.count} detail ${place.count === 1 ? "view" : "views"}`,
+      );
+      const photoFrame = document.createElement("span");
+      photoFrame.className = "trending-photo";
+      const fallback = document.createElement("span");
+      fallback.className = "trending-photo-fallback";
+      fallback.textContent = "Explore Greece";
+      fallback.setAttribute("aria-hidden", "true");
+      photoFrame.append(fallback);
+      const rank = document.createElement("span");
+      rank.className = "trending-rank";
+      rank.textContent = String(index + 1);
+      photoFrame.append(rank);
+      const details = document.createElement("span");
+      details.className = "trending-card-details";
+      const name = document.createElement("span");
+      name.className = "trending-card-name";
+      name.textContent = place.name;
+      const category = document.createElement("span");
+      category.className = "trending-card-category";
+      category.textContent = [place.category, place.region].filter(Boolean).join(" · ");
+      details.append(name, category);
+      const count = document.createElement("span");
+      count.className = "trending-count";
+      count.textContent = `${countFormatter.format(place.count)} ${place.count === 1 ? "view" : "views"}`;
+      button.append(photoFrame, details, count);
+      button.addEventListener("click", () => {
+        buildSearchIndex();
+        const feature = searchableFeatures.find((candidate) => candidate.placeId === place.placeId);
+        if (feature) {
+          showFeature(feature);
+        }
+      });
+      const credit = document.createElement("a");
+      credit.className = "trending-photo-credit";
+      credit.textContent = "Photo: Wikimedia Commons";
+      credit.href = "https://commons.wikimedia.org/";
+      credit.target = "_blank";
+      credit.rel = "noopener";
+      card.append(button, credit);
+      trendingCards.append(card);
+      void loadTrendingPhoto(place, photoFrame, credit);
+    });
+  }
+
+  async function loadTrendingPhoto(place, photoFrame, credit) {
+    if (!trendingPhotos.has(place.placeId)) {
+      const request = (async () => {
+        function plainText(value) {
+          const template = document.createElement("template");
+          template.innerHTML = value ?? "";
+          return template.content.textContent.toLocaleLowerCase();
+        }
+
+        async function searchImage(search, keywords) {
+          const params = new URLSearchParams({
+            action: "query",
+            generator: "search",
+            gsrsearch: search,
+            gsrnamespace: "6",
+            gsrlimit: "5",
+            prop: "imageinfo",
+            iiprop: "url|extmetadata|mime",
+            iiurlwidth: "480",
+            format: "json",
+            origin: "*",
+          });
+          const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`);
+          if (!response.ok) {
+            throw new Error(`Wikimedia Commons image search failed (${response.status}).`);
+          }
+          const data = await response.json();
+          return Object.values(data.query?.pages ?? {})
+            .sort((left, right) => left.index - right.index)
+            .map((page) => ({ page, image: page.imageinfo?.[0] }))
+            .find(({ page, image }) => {
+              const metadata = image?.extmetadata ?? {};
+              const searchableText = [
+                page.title,
+                metadata.ObjectName?.value,
+                metadata.ImageDescription?.value,
+                metadata.Categories?.value,
+              ].map(plainText).join(" ");
+              const matchedKeywords = keywords.filter((keyword) =>
+                searchableText.includes(keyword),
+              );
+              return image?.thumburl &&
+                ["image/jpeg", "image/png", "image/webp"].includes(image.mime) &&
+                !/\b(map|locator|sketch|engraving|painting|drawing|illustration)\b/i.test(searchableText) &&
+                matchedKeywords.length >= Math.min(2, keywords.length);
+            })?.image ?? null;
+        }
+
+        const nameKeywords = place.name
+          .toLocaleLowerCase()
+          .match(/[a-z]{4,}/g)
+          ?.filter((word) => !photoStopWords.has(word)) ?? [];
+        const image = await searchImage(
+          `${place.name} ${place.region}`,
+          [...new Set(nameKeywords)],
+        );
+        if (!image?.thumburl) {
+          return null;
+        }
+        const metadata = image.extmetadata ?? {};
+        const artistTemplate = document.createElement("template");
+        artistTemplate.innerHTML = metadata.Artist?.value ?? "";
+        const artist = artistTemplate.content.textContent.trim();
+        const license = metadata.LicenseShortName?.value;
+        return {
+          url: image.thumburl,
+          descriptionUrl: image.descriptionurl,
+          credit: `Photo: ${artist || "Wikimedia Commons"}${license ? ` · ${license}` : ""}`,
+        };
+      })();
+      trendingPhotos.set(place.placeId, request);
+    }
+
+    try {
+      const photo = await trendingPhotos.get(place.placeId);
+      if (!photo) {
+        photoFrame.classList.add("has-no-photo");
+        credit.textContent = "Photo unavailable";
+        credit.removeAttribute("href");
+        return;
+      }
+      const image = document.createElement("img");
+      image.src = photo.url;
+      image.alt = `Photo of ${place.name}`;
+      image.loading = "lazy";
+      image.addEventListener("error", () => {
+        photoFrame.classList.add("has-no-photo");
+        image.remove();
+      }, { once: true });
+      photoFrame.prepend(image);
+      credit.textContent = photo.credit;
+      credit.href = photo.descriptionUrl;
+    } catch (error) {
+      console.error(`Could not load a photo for "${place.name}".`, error);
+      photoFrame.classList.add("has-no-photo");
+      credit.textContent = "Photo unavailable";
+      credit.removeAttribute("href");
+    }
+  }
+
+  async function initializeTrending() {
+    try {
+      const { fs, db, auth } = await window.getArchaeologyFirebase();
+      trendingFirebase = { fs, db, uid: auth.currentUser.uid };
+      const today = new Date().toISOString().slice(0, 10);
+      const since = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      const query = fs.query(
+        fs.collection(db, trendingCollection),
+        fs.where("day", ">=", since),
+        fs.where("day", "<=", today),
+        fs.orderBy("day", "desc"),
+        fs.limit(5000),
+      );
+      fs.onSnapshot(query, renderTrending, (error) => {
+        console.error("Could not load trending activity.", error);
+        trendingStatus.textContent =
+          `Trending could not load: ${error.code || error.message}`;
+      });
+      trendingStatus.textContent = "Waiting for recent place activity...";
+    } catch (error) {
+      console.error("Could not connect to trending activity.", error);
+      trendingStatus.textContent =
+        `Trending could not connect: ${error.code || error.message}`;
+      throw error;
+    }
+  }
+
+  async function recordTrendingInteraction(feature, layer, category) {
+    if (!trendableCategories.has(category)) {
+      return;
+    }
+    try {
+      await trendingReady;
+      const properties = feature.properties ?? {};
+      const placeId = createPlaceId(feature, layer, category);
+      const day = new Date().toISOString().slice(0, 10);
+      const dailyKey = `${trendingFirebase.uid}_${day}_${placeId}`;
+      if (recordedInteractions.has(dailyKey)) {
+        return;
+      }
+
+      const { fs, db, uid } = trendingFirebase;
+      const activityRef = fs.doc(db, trendingCollection, dailyKey);
+      await fs.runTransaction(db, async (transaction) => {
+        const existing = await transaction.get(activityRef);
+        if (existing.exists()) {
+          return;
+        }
+        transaction.set(activityRef, {
+          placeId,
+          name: properties.name_en || properties.name || "Unnamed place",
+          category,
+          region: properties.region_unit_en || "",
+          uid,
+          day,
+          createdAt: fs.serverTimestamp(),
+        });
+      });
+      recordedInteractions.add(dailyKey);
+    } catch (error) {
+      console.error("Could not record trending activity.", error);
+      trendingStatus.textContent =
+        `Trending could not record this click: ${error.code || error.message}`;
+    }
   }
 
   function createGeoJsonLayer(data, category) {
@@ -268,6 +592,11 @@
           closeButton: true,
           maxWidth: 280,
         });
+        if (trendableCategories.has(category)) {
+          featureLayer.on("popupopen", () => {
+            void recordTrendingInteraction(feature, featureLayer, category);
+          });
+        }
       },
     });
   }
@@ -717,14 +1046,18 @@
 
   function closeSidebar() {
     panel.classList.remove("is-open");
+    document.body.classList.add("sidebar-hidden");
     backdrop.hidden = true;
     menuButton.setAttribute("aria-expanded", "false");
+    menuButton.setAttribute("aria-label", "Show map search and filters");
   }
 
   function openSidebar() {
+    document.body.classList.remove("sidebar-hidden");
     panel.classList.add("is-open");
     backdrop.hidden = false;
     menuButton.setAttribute("aria-expanded", "true");
+    menuButton.setAttribute("aria-label", "Hide map search and filters");
     searchInput.focus();
   }
 
@@ -733,8 +1066,20 @@
     legend.onAdd = () => {
       const container = L.DomUtil.create("div", "map-legend");
       container.setAttribute("aria-label", "Map legend");
-      container.innerHTML = `
-        <div class="map-legend-title">Map legend</div>
+      const header = document.createElement("div");
+      header.className = "map-legend-header";
+      const title = document.createElement("div");
+      title.className = "map-legend-title";
+      title.textContent = "Map legend";
+      const toggle = document.createElement("button");
+      toggle.className = "panel-toggle legend-toggle";
+      toggle.type = "button";
+      toggle.textContent = "Hide";
+      toggle.setAttribute("aria-label", "Hide map legend");
+      toggle.setAttribute("aria-expanded", "true");
+      const items = document.createElement("div");
+      items.className = "map-legend-items";
+      items.innerHTML = `
         <div class="map-legend-item">
           <span class="legend-symbol legend-boundary" aria-hidden="true"></span>
           <span>Archaeological boundaries</span>
@@ -759,6 +1104,17 @@
           <span class="legend-symbol legend-polygon legend-protection" aria-hidden="true"></span>
           <span>Protection zones</span>
         </div>`;
+      header.append(title, toggle);
+      container.append(header, items);
+      toggle.addEventListener("click", () => {
+        const collapsed = container.classList.toggle("is-collapsed");
+        toggle.textContent = collapsed ? "Show legend" : "Hide";
+        toggle.setAttribute("aria-expanded", String(!collapsed));
+        toggle.setAttribute(
+          "aria-label",
+          `${collapsed ? "Show" : "Hide"} map legend`,
+        );
+      });
       L.DomEvent.disableClickPropagation(container);
       return container;
     };
@@ -784,5 +1140,6 @@
   });
 
   map.invalidateSize();
+  trendingReady = initializeTrending();
   loadExternalLayers();
 })();
